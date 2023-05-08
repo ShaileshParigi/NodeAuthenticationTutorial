@@ -4,6 +4,7 @@ const { open } = require("sqlite");
 const sqlite3 = require("sqlite3");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const { request } = require("http");
 
 const dbPath = path.join(__dirname, "goodreads.db");
 const app = express();
@@ -25,8 +26,7 @@ const initializeDBAndServer = async () => {
 };
 initializeDBAndServer();
 
-//Get Books API
-app.get("/books/", (request, response) => {
+const authenticateToken = (request, response, next) => {
   let jwtToken;
   const authHeader = request.headers["authorization"];
   if (authHeader !== undefined) {
@@ -40,24 +40,38 @@ app.get("/books/", (request, response) => {
       if (error) {
         response.send("Invalid Access Token");
       } else {
-        const getBooksQuery = `
-            SELECT
-              *
-            FROM
-             book
-            ORDER BY
-             book_id;`;
-        const booksArray = await db.all(getBooksQuery);
-        response.send(booksArray);
+        request.username = payload.username;
+        next();
       }
     });
   }
+};
+
+//Get Profile
+app.get("/profile", authenticateToken, async (request, response) => {
+  let { username } = request;
+  const selectUserQuery = `SELECT * FROM user WHERE username ='${username}'`;
+  const userDetails = db.get(selectUserQuery);
+  response.send(userDetails);
+});
+
+//Get Books API
+app.get("/books/", authenticateToken, async (request, response) => {
+  const getBooksQuery = `
+  SELECT
+    *
+  FROM
+   book
+  ORDER BY
+   book_id;`;
+  const booksArray = await db.all(getBooksQuery);
+  response.send(booksArray);
 });
 
 //Get Book API
-app.get("/books/:bookId/", async(request, response) => {
-    const { bookId } = request.params;
-    const getBookQuery = `
+app.get("/books/:bookId/", authenticateToken, async (request, response) => {
+  const { bookId } = request.params;
+  const getBookQuery = `
       SELECT
        *
       FROM
@@ -65,10 +79,9 @@ app.get("/books/:bookId/", async(request, response) => {
       WHERE
        book_id = ${bookId};
     `;
-    const book = await db.get(getBookQuery);
-    response.send(book);
+  const book = await db.get(getBookQuery);
+  response.send(book);
 });
-
 
 //User Register API
 app.post("/users/", async (request, response) => {
